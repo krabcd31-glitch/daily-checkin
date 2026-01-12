@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>每日签到</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      padding: 20px;
+    }
+    .container {
+      background: white;
+      border-radius: 20px;
+      padding: 40px;
+      text-align: center;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+      max-width: 400px;
+      width: 100%;
+    }
+    h1 { color: #333; margin-bottom: 10px; font-size: 28px; }
+    .subtitle { color: #666; margin-bottom: 30px; font-size: 14px; }
+    .status {
+      background: #f5f5f5;
+      border-radius: 12px;
+      padding: 20px;
+      margin-bottom: 30px;
+    }
+    .status-label { color: #999; font-size: 12px; margin-bottom: 8px; }
+    .status-value { font-size: 18px; font-weight: bold; color: #333; }
+    .status-value.success { color: #27ae60; }
+    .streak { display: flex; justify-content: center; gap: 5px; margin: 15px 0; }
+    .day-dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background: #ddd;
+    }
+    .day-dot.checked { background: #27ae60; }
+    .day-dot.missed { background: #e74c3c; }
+    .day-dot.today { border: 2px solid #667eea; }
+    .checkin-btn {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      border: none;
+      padding: 18px 50px;
+      font-size: 18px;
+      border-radius: 50px;
+      cursor: pointer;
+      transition: transform 0.2s, box-shadow 0.2s;
+      font-weight: bold;
+    }
+    .checkin-btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 10px 30px rgba(102, 126, 234, 0.4);
+    }
+    .checkin-btn:disabled {
+      background: #ccc;
+      cursor: not-allowed;
+      transform: none;
+      box-shadow: none;
+    }
+    .checkin-btn.done { background: #27ae60; }
+    .message {
+      margin-top: 20px;
+      padding: 15px;
+      border-radius: 10px;
+      display: none;
+    }
+    .message.show { display: block; }
+    .message.success { background: #d4edda; color: #155724; }
+    .message.error { background: #f8d7da; color: #721c24; }
+    .last-checkin { margin-top: 20px; font-size: 12px; color: #999; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>📅 每日签到</h1>
+    <p class="subtitle">保持每天签到，不要让家人担心哦~</p>
+    <div class="status">
+      <div class="status-label">连续签到</div>
+      <div class="status-value" id="streak-count">加载中...</div>
+      <div class="streak" id="streak-dots"></div>
+    </div>
+    <button class="checkin-btn" id="checkin-btn" onclick="doCheckin()">签到</button>
+    <div class="message" id="message"></div>
+    <div class="last-checkin" id="last-checkin"></div>
+  </div>
+  <script>
+    const API_BASE = '/api';
+    window.onload = function() { getStatus(); };
+    async function getStatus() {
+      try {
+        const res = await fetch(API_BASE + '/status');
+        const data = await res.json();
+        updateUI(data);
+      } catch (err) {
+        showMessage('获取状态失败，请刷新页面', 'error');
+      }
+    }
+    function updateUI(data) {
+      document.getElementById('streak-count').textContent = data.streak + ' 天';
+      if (data.streak >= 7) document.getElementById('streak-count').classList.add('success');
+      const streakDots = document.getElementById('streak-dots');
+      streakDots.innerHTML = '';
+      const today = new Date().toISOString().split('T')[0];
+      for (let i = 6; i >= 0; i--) {
+        const date = new Date();
+        date.setDate(date.getDate() - i);
+        const dateStr = date.toISOString().split('T')[0];
+        const dot = document.createElement('div');
+        dot.className = 'day-dot';
+        if (data.checkins && data.checkins.includes(dateStr)) dot.classList.add('checked');
+        else if (dateStr < today) dot.classList.add('missed');
+        if (dateStr === today) dot.classList.add('today');
+        streakDots.appendChild(dot);
+      }
+      const btn = document.getElementById('checkin-btn');
+      if (data.checkedToday) {
+        btn.textContent = '✓ 已签到';
+        btn.classList.add('done');
+        btn.disabled = true;
+      } else {
+        btn.textContent = '签到';
+        btn.classList.remove('done');
+        btn.disabled = false;
+      }
+      if (data.lastCheckin) document.getElementById('last-checkin').textContent = '上次签到: ' + data.lastCheckin;
+    }
+    async function doCheckin() {
+      const btn = document.getElementById('checkin-btn');
+      btn.disabled = true;
+      btn.textContent = '签到中...';
+      try {
+        const res = await fetch(API_BASE + '/checkin', { method: 'POST' });
+        const data = await res.json();
+        if (data.success) {
+          showMessage('🎉 签到成功！继续保持~', 'success');
+          getStatus();
+        } else {
+          showMessage(data.message || '签到失败', 'error');
+          btn.disabled = false;
+          btn.textContent = '签到';
+        }
+      } catch (err) {
+        showMessage('网络错误，请重试', 'error');
+        btn.disabled = false;
+        btn.textContent = '签到';
+      }
+    }
+    function showMessage(text, type) {
+      const msg = document.getElementById('message');
+      msg.textContent = text;
+      msg.className = 'message show ' + type;
+      setTimeout(function() { msg.classList.remove('show'); }, 3000);
+    }
+  </script>
+</body>
+</html>
